@@ -182,7 +182,7 @@ def make_metadata(
     if run_id:
         eval_output_path = os.path.join(eval_output_path, run_id)
     if shard_id:
-        eval_output_path = os.path.join(eval_output_path, run_id)
+        eval_output_path = os.path.join(eval_output_path, shard_id)
     logger.info(f'Using evaluation output directory: {eval_output_path}')
 
     pathlib.Path(eval_output_path).mkdir(parents=True, exist_ok=True)
