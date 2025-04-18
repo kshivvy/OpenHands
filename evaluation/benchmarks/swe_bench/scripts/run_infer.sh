@@ -65,6 +65,8 @@ echo "MAX_ITER: $MAX_ITER"
 echo "NUM_WORKERS: $NUM_WORKERS"
 echo "COMMIT_HASH: $COMMIT_HASH"
 echo "MODE: $MODE"
+echo "RUN_ID: $RUN_ID"
+echo "SHARD_ID: $SHARD_ID"
 
 # Default to NOT use Hint
 if [ -z "$USE_HINT_TEXT" ]; then
