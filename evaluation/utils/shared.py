@@ -171,23 +171,24 @@ def make_metadata(
     details: dict[str, Any] | None = None,
     agent_config: AgentConfig | None = None,
     condenser_config: CondenserConfig | None = None,
+    run_id: str | None = None,
+    shard_id: str | None = None,
 ) -> EvalMetadata:
     model_name = llm_config.model.split('/')[-1]
     model_path = model_name.replace(':', '_').replace('@', '-')
     eval_note = f'_N_{eval_note}' if eval_note else ''
 
-    eval_output_path = os.path.join(
-        eval_output_dir,
-        dataset_name,
-        agent_class,
-        f'{model_path}_maxiter_{max_iterations}{eval_note}',
-    )
+    eval_output_path = eval_output_dir
+    if run_id:
+        eval_output_path = os.path.join(eval_output_path, run_id)
+    if shard_id:
+        eval_output_path = os.path.join(eval_output_path, run_id)
+    logger.info(f'Using evaluation output directory: {eval_output_path}')
 
     pathlib.Path(eval_output_path).mkdir(parents=True, exist_ok=True)
     pathlib.Path(os.path.join(eval_output_path, 'logs')).mkdir(
         parents=True, exist_ok=True
     )
-    logger.info(f'Using evaluation output directory: {eval_output_path}')
 
     metadata = EvalMetadata(
         agent_class=agent_class,
