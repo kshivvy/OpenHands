@@ -133,7 +133,7 @@ MODEL=\${MODEL:-'gemini/gemini-1.5-flash-002'}
 SELECTED_IDS=\${SELECTED_IDS:-\"['sphinx-doc__sphinx-8721']\"}
 printf \"selected_ids = \${SELECTED_IDS}\n\" > /app/evaluation/benchmarks/swe_bench/config.toml
 # Create LLM config.
-printf \"[llm.gemini]\n model = '\${MODEL}'\n api_key = '\${GEMINI_API_KEY}'\n temperature = 1.0\n top_p = 0.95\n max_output_tokens = 65536\n caching_prompt = false\n num_retries = 100\n timeout = 600\n\" > /app/config.toml
+printf \"[llm.gemini]\n model = '\${MODEL}'\n api_key = '\${GEMINI_API_KEY}'\n temperature = 1.0\n top_p = 0.95\n max_output_tokens = 65536\n caching_prompt = false\n num_retries = 100\n timeout = 600\n seed = 42\n\" > /app/config.toml
 # Run evaluation.
 # See README at https://github.com/All-Hands-AI/OpenHands/tree/main/evaluation/benchmarks/swe_bench
 # [model_config] [git-version] [agent] [eval_limit] [max_iter] [num_workers] [dataset] [dataset_split]
