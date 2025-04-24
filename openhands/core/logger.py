@@ -373,11 +373,24 @@ openhands_logger.addFilter(SensitiveDataFilter(openhands_logger.name))
 openhands_logger.propagate = False
 openhands_logger.debug('Logging initialized')
 
-LOG_DIR = os.path.join(
-    # parent dir of openhands/core (i.e., root of the repo)
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-    'logs',
-)
+# Also log to evaluation outputs
+RUN_ID = os.getenv('RUN_ID', None)
+SHARD_ID = os.getenv('SHARD_ID', None)
+if RUN_ID and SHARD_ID:
+    LOG_DIR = os.path.join(
+        # parent dir of openhands/core (i.e., root of the repo)
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+        RUN_ID,
+        SHARD_ID,
+        'logs',
+    )
+else:
+    LOG_DIR = os.path.join(
+        # parent dir of openhands/core (i.e., root of the repo)
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+        'logs',
+    )
+
 
 if LOG_TO_FILE:
     openhands_logger.addHandler(
