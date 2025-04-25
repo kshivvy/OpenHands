@@ -380,6 +380,7 @@ if RUN_ID and SHARD_ID:
     LOG_DIR = os.path.join(
         # parent dir of openhands/core (i.e., root of the repo)
         os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+        'evaluation/evaluation_outputs/outputs',
         RUN_ID,
         SHARD_ID,
         'logs',
