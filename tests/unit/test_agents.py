@@ -6,9 +6,6 @@ from litellm import ChatCompletionMessageToolCall
 
 from openhands.agenthub.codeact_agent.codeact_agent import CodeActAgent
 from openhands.agenthub.codeact_agent.function_calling import (
-    get_tools as codeact_get_tools,
-)
-from openhands.agenthub.codeact_agent.function_calling import (
     response_to_actions as codeact_response_to_actions,
 )
 from openhands.agenthub.codeact_agent.tools import (
@@ -23,9 +20,6 @@ from openhands.agenthub.codeact_agent.tools import (
 from openhands.agenthub.codeact_agent.tools.browser import (
     _BROWSER_DESCRIPTION,
     _BROWSER_TOOL_DESCRIPTION,
-)
-from openhands.agenthub.readonly_agent.function_calling import (
-    get_tools as readonly_get_tools,
 )
 from openhands.agenthub.readonly_agent.function_calling import (
     response_to_actions as readonly_response_to_actions,
@@ -50,6 +44,7 @@ from openhands.events.observation.commands import (
 )
 from openhands.events.tool import ToolCallMetadata
 from openhands.llm.llm import LLM
+from openhands.memory.condenser import View
 
 
 @pytest.fixture(params=['CodeActAgent', 'ReadOnlyAgent'])
@@ -72,6 +67,22 @@ def agent(agent_class) -> Union[CodeActAgent, ReadOnlyAgent]:
     return agent
 
 
+def test_agent_with_default_config_has_default_tools():
+    config = AgentConfig()
+    codeact_agent = CodeActAgent(llm=LLM(LLMConfig()), config=config)
+    assert len(codeact_agent.tools) > 0
+    default_tool_names = [tool['function']['name'] for tool in codeact_agent.tools]
+    assert {
+        'browser',
+        'execute_bash',
+        'execute_ipython_cell',
+        'finish',
+        'str_replace_editor',
+        'think',
+        'web_read',
+    }.issubset(default_tool_names)
+
+
 @pytest.fixture
 def mock_state() -> State:
     state = Mock(spec=State)
@@ -87,6 +98,12 @@ def test_reset(agent):
     action._source = EventSource.AGENT
     agent.pending_actions.append(action)
 
+    # Create a mock state with initial user message
+    mock_state = Mock(spec=State)
+    initial_user_message = MessageAction(content='Initial user message')
+    initial_user_message._source = EventSource.USER
+    mock_state.history = [initial_user_message]
+
     # Reset
     agent.reset()
 
@@ -100,65 +117,16 @@ def test_step_with_pending_actions(agent):
     pending_action._source = EventSource.AGENT
     agent.pending_actions.append(pending_action)
 
+    # Create a mock state with initial user message
+    mock_state = Mock(spec=State)
+    initial_user_message = MessageAction(content='Initial user message')
+    initial_user_message._source = EventSource.USER
+    mock_state.history = [initial_user_message]
+
     # Step should return the pending action
-    result = agent.step(Mock())
+    result = agent.step(mock_state)
     assert result == pending_action
     assert len(agent.pending_actions) == 0
-
-
-def test_codeact_get_tools_default():
-    tools = codeact_get_tools(
-        enable_jupyter=True,
-        enable_llm_editor=True,
-        enable_browsing=True,
-    )
-    assert len(tools) > 0
-
-    # Check required tools are present
-    tool_names = [tool['function']['name'] for tool in tools]
-    assert 'execute_bash' in tool_names
-    assert 'execute_ipython_cell' in tool_names
-    assert 'edit_file' in tool_names
-    assert 'web_read' in tool_names
-
-
-def test_readonly_get_tools_default():
-    tools = readonly_get_tools()
-    assert len(tools) > 0
-
-    # Check required tools are present
-    tool_names = [tool['function']['name'] for tool in tools]
-    assert 'execute_bash' not in tool_names
-    assert 'execute_ipython_cell' not in tool_names
-    assert 'edit_file' not in tool_names
-    assert 'web_read' in tool_names
-    assert 'grep' in tool_names
-    assert 'glob' in tool_names
-    assert 'think' in tool_names
-
-
-def test_codeact_get_tools_with_options():
-    # Test with all options enabled
-    tools = codeact_get_tools(
-        enable_browsing=True,
-        enable_jupyter=True,
-        enable_llm_editor=True,
-    )
-    tool_names = [tool['function']['name'] for tool in tools]
-    assert 'browser' in tool_names
-    assert 'execute_ipython_cell' in tool_names
-    assert 'edit_file' in tool_names
-
-    # Test with all options disabled
-    tools = codeact_get_tools(
-        enable_browsing=False,
-        enable_jupyter=False,
-        enable_llm_editor=False,
-    )
-    tool_names = [tool['function']['name'] for tool in tools]
-    assert 'browser' not in tool_names
-    assert 'execute_ipython_cell' not in tool_names
-    assert 'edit_file' not in tool_names
 
 
 def test_cmd_run_tool():
@@ -305,6 +273,11 @@ def test_step_with_no_pending_actions(mock_state: State):
     mock_state.latest_user_message_llm_metrics = None
     mock_state.latest_user_message_tool_call_metadata = None
 
+    # Add initial user message to history
+    initial_user_message = MessageAction(content='Initial user message')
+    initial_user_message._source = EventSource.USER
+    mock_state.history = [initial_user_message]
+
     action = agent.step(mock_state)
     assert isinstance(action, MessageAction)
     assert action.content == 'Task completed'
@@ -375,42 +348,56 @@ def test_mismatched_tool_call_events_and_auto_add_system_message(
     )
 
     action = CmdRunAction('foo')
-    action._source = 'agent'
+    action._source = EventSource.AGENT
     action.tool_call_metadata = tool_call_metadata
 
     observation = CmdOutputObservation(content='', command_id=0, command='foo')
     observation.tool_call_metadata = tool_call_metadata
 
+    # Add initial user message
+    initial_user_message = MessageAction(content='Initial user message')
+    initial_user_message._source = EventSource.USER
+
     # When both events are provided, the agent should get three messages:
     # 1. The system message (added automatically for backward compatibility)
     # 2. The action message
     # 3. The observation message
-    mock_state.history = [action, observation]
-    messages = agent._get_messages(mock_state.history)
-    assert len(messages) == 3
+    mock_state.history = [initial_user_message, action, observation]
+    messages = agent._get_messages(mock_state.history, initial_user_message)
+    assert len(messages) == 4  # System + initial user + action + observation
     assert messages[0].role == 'system'  # First message should be the system message
-    assert messages[1].role == 'assistant'  # Second message should be the action
-    assert messages[2].role == 'tool'  # Third message should be the observation
+    assert (
+        messages[1].role == 'user'
+    )  # Second message should be the initial user message
+    assert messages[2].role == 'assistant'  # Third message should be the action
+    assert messages[3].role == 'tool'  # Fourth message should be the observation
 
     # The same should hold if the events are presented out-of-order
-    mock_state.history = [observation, action]
-    messages = agent._get_messages(mock_state.history)
-    assert len(messages) == 3
+    mock_state.history = [initial_user_message, observation, action]
+    messages = agent._get_messages(mock_state.history, initial_user_message)
+    assert len(messages) == 4
     assert messages[0].role == 'system'  # First message should be the system message
+    assert (
+        messages[1].role == 'user'
+    )  # Second message should be the initial user message
 
     # If only one of the two events is present, then we should just get the system message
     # plus any valid message from the event
-    mock_state.history = [action]
-    messages = agent._get_messages(mock_state.history)
+    mock_state.history = [initial_user_message, action]
+    messages = agent._get_messages(mock_state.history, initial_user_message)
     assert (
-        len(messages) == 1
-    )  # Only system message, action is waiting for its observation
+        len(messages) == 2
+    )  # System + initial user message, action is waiting for its observation
     assert messages[0].role == 'system'
+    assert messages[1].role == 'user'
 
-    mock_state.history = [observation]
-    messages = agent._get_messages(mock_state.history)
-    assert len(messages) == 1  # Only system message, observation has no matching action
+    mock_state.history = [initial_user_message, observation]
+    messages = agent._get_messages(mock_state.history, initial_user_message)
+    assert (
+        len(messages) == 2
+    )  # System + initial user message, observation has no matching action
     assert messages[0].role == 'system'
+    assert messages[1].role == 'user'
 
 
 def test_grep_tool():
@@ -515,3 +502,19 @@ def test_get_system_message():
     assert len(result.tools) > 0
     assert any(tool['function']['name'] == 'execute_bash' for tool in result.tools)
     assert result._source == EventSource.AGENT
+
+
+def test_step_raises_error_if_no_initial_user_message(
+    agent: CodeActAgent, mock_state: State
+):
+    """Tests that step raises ValueError if the initial user message is not found."""
+    # Ensure history does NOT contain a user MessageAction
+    assistant_message = MessageAction(content='Assistant message')
+    assistant_message._source = EventSource.AGENT
+    mock_state.history = [assistant_message]
+    # Mock the condenser to return the history as is
+    agent.condenser = Mock()
+    agent.condenser.condensed_history.return_value = View(events=mock_state.history)
+
+    with pytest.raises(ValueError, match='Initial user message not found'):
+        agent.step(mock_state)
